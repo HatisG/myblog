@@ -2,25 +2,23 @@ package main
 
 import (
 	"fmt"
-	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-
-	http.HandleFunc("/ping", pingHandler)
-	http.HandleFunc("/post", postsHandler)
-
-	fmt.Println("Server is running on :8080")
-	http.ListenAndServe(":8080", nil)
+	gin.SetMode("release")
+	r := gin.Default()
+	r.GET("/ping", pingHandler)
+	r.GET("/post", postHandler)
+	fmt.Println("server is running on :8080")
+	r.Run(":8080")
 
 }
 
-func pingHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"msg":"success"}`))
+func pingHandler(c *gin.Context) {
+	c.JSON(200, gin.H{"msg": "success"})
 }
-
-func postsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`[]`))
+func postHandler(c *gin.Context) {
+	c.JSON(200, []interface{}{})
 }
