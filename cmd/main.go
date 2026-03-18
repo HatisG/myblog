@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -21,9 +22,9 @@ type Post struct {
 
 func main() {
 	//数据库连接
-	dns := "root:root@tcp(127.0.0.1:3306)/blog?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := "root:root@tcp(127.0.0.1:3306)/blog?charset=utf8mb4&parseTime=True&loc=Local"
 	var err error
-	db, err = sql.Open("mysql", dns)
+	db, err = sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal("数据库连接失败", err)
 	}
@@ -51,9 +52,12 @@ func main() {
 	//gin路由
 	r.GET("/ping", pingHandler)
 	r.GET("/post", postsHandler)
+	r.POST("/post", createPostHandler)
+	r.GET("/post/:id", getPostHandler)
 
 	//gin监听
 	fmt.Println("server is running on :8080")
+	r.StaticFile("/post.html", "./web/post.html")
 	r.Run(":8080")
 
 }
@@ -90,11 +94,80 @@ func postsHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	if err = rows.Err(); err != nil {
+
+	c.JSON(200, posts)
+
+}
+
+// createPost处理函数
+func createPostHandler(c *gin.Context) {
+
+	//新文章的临时结构体
+	var newPost struct {
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&newPost); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	//插入新文章，用result去接
+	result, err := db.Exec("insert into posts (title,content) values (?,?)", newPost.Title, newPost.Content)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(200, posts)
+	//返回result的自增id
+	id, err := result.LastInsertId()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	//成功相应
+	c.JSON(http.StatusCreated, gin.H{
+		"id":      id,
+		"title":   newPost.Title,
+		"content": newPost.Content,
+	})
+
+}
+
+// getPost的处理函数
+func getPostHandler(c *gin.Context) {
+	//从URL中获得id的参数
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少文章ID"})
+		return
+	}
+
+	var id int
+	var err error
+	//id从字符串转整数
+	id, err = strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var post Post
+	//根据id从database中拿post的id，title，content
+	row := db.QueryRow("select id,title,content from posts where id = ?", id)
+	//查询结果传到结构体内
+	err = row.Scan(&post.ID, &post.Title, &post.Content)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	//返回文章json
+	c.JSON(http.StatusOK, post)
 
 }
