@@ -54,6 +54,8 @@ func main() {
 	r.GET("/post", postsHandler)
 	r.POST("/post", createPostHandler)
 	r.GET("/post/:id", getPostHandler)
+	r.PUT("/post/:id", updatePostHandler)
+	r.DELETE("/post/:id", deletePostHandler)
 
 	//gin监听
 	fmt.Println("server is running on :8080")
@@ -170,4 +172,73 @@ func getPostHandler(c *gin.Context) {
 	//返回文章json
 	c.JSON(http.StatusOK, post)
 
+}
+
+// updatePost处理函数
+func updatePostHandler(c *gin.Context) {
+	//从URL上取id并转为整数
+	isStr := c.Param("id")
+	id, err := strconv.Atoi(isStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	//临时Post
+	var updatePost struct {
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&updatePost); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	//Sql语句更新Post
+	res, err := db.Exec("update posts set title=?,content=? where id=?", updatePost.Title, updatePost.Content, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	//返回res中的rowsaffected，即此次修改影响的行数
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"msg": "更新成功"})
+}
+
+// deletePost处理函数
+func deletePostHandler(c *gin.Context) {
+	//取id整数化
+	isStr := c.Param("id")
+	id, err := strconv.Atoi(isStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	//SQL通过id删除
+	res, err := db.Exec("delete from posts where id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	//查看删除行为对行数的影响
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"msg": "删除成功"})
 }
