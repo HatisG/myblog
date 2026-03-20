@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>查询文章 - MyBlog</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar" id="navbar"></nav>
+
+    <!-- 主要内容 -->
+    <div class="container">
+        <div class="search-container">
+            <!-- 左侧筛选栏 -->
+            <div class="sidebar">
+                <h3>文章筛选</h3>
+                
+                <!-- 模糊查询（预留） -->
+                <div class="form-group">
+                    <label for="keyword">关键词搜索</label>
+                    <input type="text" id="keyword" class="form-control" placeholder="输入关键词...">
+                </div>
+                
+                <!-- 标签查询 -->
+                <div class="form-group">
+                    <label for="tag-filter">标签筛选</label>
+                    <input type="text" id="tag-filter" class="form-control" placeholder="输入标签名称...">
+                </div>
+                
+                <button id="search-btn" class="btn btn-primary" style="width: 100%; margin-top: 10px;">搜索</button>
+            </div>
+            
+            <!-- 右侧结果列表 -->
+            <div class="main-content">
+                <!-- 单篇文章详情（如果有postId参数） -->
+                <div id="single-post-container" style="display: none;" class="single-post card">
+                    <!-- 动态加载单篇文章 -->
+                </div>
+                
+                <!-- 文章列表 -->
+                <div id="posts-list-container" class="search-results">
+                    <h3>文章列表</h3>
+                    <div id="posts-list">
+                        <!-- 动态加载文章列表 -->
+                    </div>
+                    
+                    <!-- 分页控件 -->
+                    <div class="pagination" id="pagination">
+                        <!-- 动态加载分页按钮 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 脚本 -->
+    <script src="static/js/main.js"></script>
+    <script>
+        // 全局变量
+        let currentPage = 1;
+        let currentTag = '';
+        const pageSize = 10;
+        
+        // 加载文章列表
+        async function loadPosts(page = 1, tag = '') {
+            try {
+                const response = await httpGet('/post', {
+                    page: page,
+                    page_size: pageSize,
+                    tag: tag
+                });
+                
+                const { data, total, page: currentPageNum } = response;
+                currentPage = currentPageNum;
+                currentTag = tag;
+                
+                const postsList = document.getElementById('posts-list');
+                
+                if (data.length === 0) {
+                    postsList.innerHTML = '<p>暂无相关文章</p>';
+                    renderPagination(total, currentPage);
+                    return;
+                }
+                
+                let html = '';
+                data.forEach(post => {
+                    // 拼接标签
+                    let tagsHtml = '';
+                    post.tags.forEach(tag => {
+                        tagsHtml += `<span class="tag">${tag.name}</span>`;
+                    });
+                    
+                    html += `
+                        <div class="card post-card" style="margin-bottom: 15px;">
+                            <h3><a href="search-post.html?postId=${post.id}" style="text-decoration: none; color: #2c3e50;">${post.title}</a></h3>
+                            <div class="date">${formatDate(post.created_at)}</div>
+                            <div class="tags">${tagsHtml}</div>
+                            <div class="excerpt">${post.content.length > 100 ? post.content.substring(0, 100) + '...' : post.content}</div>
+                            <a href="search-post.html?postId=${post.id}" class="btn btn-primary">阅读全文</a>
+                        </div>
+                    `;
+                });
+                
+                postsList.innerHTML = html;
+                renderPagination(total, currentPage);
+            } catch (error) {
+                showError('加载文章失败：' + error.message);
+            }
+        }
+        
+        // 渲染分页控件
+        function renderPagination(total, currentPage) {
+            const totalPages = Math.ceil(total / pageSize);
+            const pagination = document.getElementById('pagination');
+            
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+            
+            let html = '';
+            
+            // 上一页按钮
+            html += `<button ${currentPage === 1 ? 'disabled' : ''} onclick="loadPosts(${currentPage - 1}, '${currentTag}')">上一页</button>`;
+            
+            // 页码按钮
+            for (let i = 1; i <= totalPages; i++) {
+                html += `<button class="${i === currentPage ? 'active' : ''}" onclick="loadPosts(${i}, '${currentTag}')">${i}</button>`;
+            }
+            
+            // 下一页按钮
+            html += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="loadPosts(${currentPage + 1}, '${currentTag}')">下一页</button>`;
+            
+            pagination.innerHTML = html;
+        }
+        
+        // 加载单篇文章
+       // 加载单篇文章
+async function loadSinglePost(postId) {
+    try {
+        const response = await httpGet(`/post/${postId}`);
+        const post = response;
+
+        const singlePostContainer = document.getElementById('single-post-container');
+        const postsListContainer = document.getElementById('posts-list-container');
+
+        // 显示单篇文章，隐藏列表
+        singlePostContainer.style.display = 'block';
+        postsListContainer.style.display = 'none';
+
+        // 拼接标签
+        let tagsHtml = '';
+        post.tags.forEach(tag => {
+            tagsHtml += `<span class="tag">${tag.name}</span>`;
+        });
+
+        // 核心修改：新增删除按钮（和编辑按钮同栏）
+        singlePostContainer.innerHTML = `
+            <div class="meta" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="tags">${tagsHtml}</div>
+                <div class="action-buttons">
+                    <button class="btn btn-edit" onclick="editPost(${post.id})">编辑文章</button>
+                    <button class="btn btn-danger" onclick="deletePost(${post.id})">删除文章</button>
+                </div>
+            </div>
+            <h1>${post.title}</h1>
+            <div class="date">发布时间：${formatDate(post.created_at)}</div>
+            <div class="content" style="margin-top: 20px; line-height: 1.8; white-space: pre-line;">${post.content}</div>
+            <button class="btn btn-primary" style="margin-top: 20px;" onclick="backToList()">返回列表</button>
+        `;
+    } catch (error) {
+        showError('加载文章失败：' + error.message);
+        // 加载失败则返回列表
+        backToList();
+    }
+}
+
+// 新增：删除文章函数（带确认提示）
+async function deletePost(postId) {
+    // 确认删除提示（原生弹窗，简单安全）
+    const isConfirm = confirm('确定要删除这篇文章吗？删除后无法恢复！');
+    if (!isConfirm) {
+        return; // 用户取消，直接返回
+    }
+
+    try {
+        // 调用删除文章API（封装DELETE请求）
+        await httpDelete(`/post/${postId}`);
+        
+        alert('文章删除成功！');
+        // 删除后跳回文章列表页
+        window.location.href = 'search-post.html';
+    } catch (error) {
+        showError('删除失败：' + error.message);
+    }
+}
+
+// 补充：在main.js中新增httpDelete函数（原生JS封装DELETE请求）
+// 打开static/js/main.js，添加以下代码：
+function httpDelete(url) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('DELETE', `${API_BASE_URL}${url}`, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        
+        xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+                    resolve(response);
+                } catch (e) {
+                    reject(new Error('解析响应数据失败：' + e.message));
+                }
+            } else {
+                try {
+                    const errorData = JSON.parse(xhr.responseText);
+                    reject(new Error(errorData.error || `请求失败：${xhr.status} ${xhr.statusText}`));
+                } catch (e) {
+                    reject(new Error(`请求失败：${xhr.status} ${xhr.statusText}`));
+                }
+            }
+        };
+        
+        xhr.onerror = function() {
+            reject(new Error('网络请求失败，请检查连接'));
+        };
+        
+        xhr.send();
+    });
+}
+        // 返回列表
+        // 返回列表函数（修复核心：重新加载列表）
+function backToList() {
+    const singlePostContainer = document.getElementById('single-post-container');
+    const postsListContainer = document.getElementById('posts-list-container');
+    
+    // 隐藏详情页，显示列表容器
+    singlePostContainer.style.display = 'none';
+    postsListContainer.style.display = 'block';
+    
+    // 关键修复：重新加载文章列表（使用当前的分页和标签筛选条件）
+    loadPosts(currentPage, currentTag);
+}
+        
+        // 编辑文章
+        function editPost(postId) {
+            // 跳转到编辑页面（这里简化处理，实际项目可单独做编辑页面）
+            window.location.href = `create-post.html?editId=${postId}`;
+        }
+        
+        // 搜索按钮点击事件
+        document.getElementById('search-btn').addEventListener('click', function() {
+            const tag = document.getElementById('tag-filter').value.trim();
+            // 关键词搜索预留，这里暂时只处理标签
+            loadPosts(1, tag);
+        });
+        
+        // 页面加载初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            const postId = getUrlParam('postId');
+            if (postId) {
+                loadSinglePost(postId);
+            } else {
+                loadPosts(1, '');
+            }
+        });
+    </script>
+</body>
+</html>

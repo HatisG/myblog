@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>关于我们 - MyBlog</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar" id="navbar"></nav>
+
+    <!-- 主要内容 -->
+    <div class="container">
+        <div class="card" style="max-width: 800px; margin: 0 auto;">
+            <h2>关于我们</h2>
+            <div id="about-content" style="margin-top: 20px; line-height: 1.8; white-space: pre-line;">
+                加载中...
+            </div>
+        </div>
+    </div>
+
+    <!-- 脚本 -->
+    <script src="static/js/main.js"></script>
+    <script>
+        // 加载关于我们内容
+        async function loadAboutContent() {
+            try {
+                const response = await httpGet('/api/about');
+                document.getElementById('about-content').textContent = response.content;
+            } catch (error) {
+                document.getElementById('about-content').textContent = '无法加载关于我们的内容：' + error.message;
+            }
+        }
+
+        // 页面加载时执行
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAboutContent();
+        });
+    </script>
+</body>
+</html>

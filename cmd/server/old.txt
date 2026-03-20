@@ -1,0 +1,362 @@
+// package main
+
+// import (
+// 	"errors"
+// 	"fmt"
+// 	"log"
+// 	"net/http"
+// 	"os"
+// 	"strconv"
+// 	"strings"
+// 	"time"
+
+// 	"github.com/gin-gonic/gin"
+// 	_ "github.com/go-sql-driver/mysql"
+// 	"gorm.io/driver/mysql"
+// 	"gorm.io/gorm"
+// )
+
+// var db *gorm.DB
+
+// // tag结构体，用于储存标签
+// type Tag struct {
+// 	ID   uint   `gorm:"primaryKey" json:"id"`
+// 	Name string `gorm:"size:50;uniqueIndex;not null" json:"name"`
+// }
+
+// // post结构体，用于储存文章
+// type Post struct {
+// 	ID        uint      `gorm:"primaryKey" json:"id"`
+// 	Title     string    `gorm:"size:255;not null" json:"title"`
+// 	Content   string    `gorm:"type:text" json:"content"`
+// 	CreatedAt time.Time `json:"created_at"`
+// 	UpdatedAt time.Time `json:"updated_at"`
+// 	Tags      []Tag     `gorm:"many2many:post_tags;" json:"tags"` //多对多关系
+// }
+
+// func main() {
+// 	//数据库连接
+// 	dsn := "root:root@tcp(127.0.0.1:3306)/blog?charset=utf8mb4&parseTime=True&loc=Local"
+// 	var err error
+// 	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+// 	if err != nil {
+// 		log.Fatal("数据库连接失败", err)
+// 	}
+// 	fmt.Println("数据库连接成功")
+
+// 	//gorm自动迁移
+// 	if err := db.AutoMigrate(&Post{}, &Tag{}); err != nil {
+// 		log.Fatal("自动迁移失败", err)
+// 	}
+// 	fmt.Println("表迁移成功")
+
+// 	//gin初始化
+// 	gin.SetMode("release")
+// 	r := gin.Default()
+
+// 	//静态文件
+// 	r.LoadHTMLGlob("./web/*.html")
+// 	r.Static("/static", "./web/static")
+// 	r.GET("/", func(c *gin.Context) {
+// 		c.HTML(http.StatusOK, "index.html", nil)
+// 	})
+// 	r.GET("/index.html", func(c *gin.Context) {
+// 		c.HTML(http.StatusOK, "index.html", nil)
+// 	})
+// 	r.GET("/create-post.html", func(c *gin.Context) {
+// 		c.HTML(http.StatusOK, "create-post.html", nil)
+// 	})
+// 	r.GET("/search-post.html", func(c *gin.Context) {
+// 		c.HTML(http.StatusOK, "search-post.html", nil)
+// 	})
+// 	r.GET("/about.html", func(c *gin.Context) {
+// 		c.HTML(http.StatusOK, "about.html", nil)
+// 	})
+
+// 	//gin路由
+// 	r.GET("/ping", pingHandler)
+// 	r.GET("/post", postsHandler)
+// 	r.POST("/post", createPostHandler)
+// 	r.GET("/post/:id", getPostHandler)
+// 	r.PUT("/post/:id", updatePostHandler)
+// 	r.DELETE("/post/:id", deletePostHandler)
+// 	r.GET("/api/about", aboutHandler)
+
+// 	for _, route := range r.Routes() {
+// 		fmt.Printf("%s %s\n", route.Method, route.Path)
+// 	}
+// 	//启动服务
+// 	fmt.Println("server is running on :8080")
+// 	r.Run(":8080")
+
+// }
+
+// // ping处理器函数
+// func pingHandler(c *gin.Context) {
+// 	c.JSON(200, gin.H{"msg": "success"})
+// }
+
+// // post处理器函数
+// func postsHandler(c *gin.Context) {
+// 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+// 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+// 	if page < 1 {
+// 		page = 1
+// 	}
+// 	if pageSize < 1 || pageSize > 100 {
+// 		pageSize = 10
+// 	}
+// 	offset := (page - 1) * pageSize
+
+// 	query := db.Model(&Post{}).Preload("Tags")
+// 	query = query.Order("created_at DESC")
+
+// 	if tagName := c.Query("tag"); tagName != "" {
+// 		query = query.Joins("join post_tags on post_tags.post_id = posts.id").
+// 			Joins("join tags on tags.id = post_tags.tag_id").
+// 			Where("tags.name = ?", tagName)
+// 	}
+
+// 	var posts []Post
+// 	var total int64
+
+// 	if err := query.Count(&total).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	//gorm中Find方法直接遍历，并返回给posts这个临时结构体
+// 	if err := query.Preload("Tags").Offset(offset).Limit(pageSize).Find(&posts).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"data":  posts,
+// 		"total": total,
+// 		"page":  page,
+// 		"size":  pageSize,
+// 	})
+
+// }
+
+// // createPost处理函数
+// func createPostHandler(c *gin.Context) {
+
+// 	//新文章的临时结构体
+// 	var req struct {
+// 		Title   string   `json:"title" binding:"required"`
+// 		Content string   `json:"content" binding:"required"`
+// 		Tags    []string `json:"tags"`
+// 	}
+
+// 	if err := c.ShouldBindJSON(&req); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	post := Post{
+// 		Title:   req.Title,
+// 		Content: req.Content,
+// 	}
+
+// 	var tags []Tag
+// 	for _, tagName := range req.Tags {
+// 		tagName = strings.TrimSpace(tagName)
+// 		if tagName == "" {
+// 			continue
+// 		}
+// 		var tag Tag
+// 		err := db.Where(Tag{Name: tagName}).FirstOrCreate(&tag).Error
+// 		if err != nil {
+// 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 			return
+// 		}
+// 		tags = append(tags, tag)
+// 	}
+// 	post.Tags = tags
+
+// 	//gorm使用Create方法创建新的Post
+// 	if err := db.Create(&post).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	c.JSON(http.StatusCreated, post)
+// }
+
+// // getPost的处理函数
+// func getPostHandler(c *gin.Context) {
+// 	//从URL中获得id的参数
+// 	idStr := c.Param("id")
+// 	id, err := strconv.Atoi(idStr)
+// 	if err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效ID"})
+// 		return
+// 	}
+
+// 	var post Post
+
+// 	//使用First方法主键查询
+// 	if err := db.Preload("Tags").First(&post, id).Error; err != nil {
+// 		if errors.Is(err, gorm.ErrRecordNotFound) {
+// 			c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+// 			return
+// 		}
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	//返回文章json
+// 	c.JSON(http.StatusOK, post)
+
+// }
+
+// // updatePost处理函数
+// func updatePostHandler(c *gin.Context) {
+// 	//从URL上取id并转为整数
+// 	isStr := c.Param("id")
+// 	id, err := strconv.Atoi(isStr)
+// 	if err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效ID"})
+// 		return
+// 	}
+
+// 	var req struct {
+// 		Title   string   `json:"title" binding:"required"`
+// 		Content string   `json:"content" binding:"required"`
+// 		Tags    []string `json:"tags"`
+// 	}
+// 	if err := c.ShouldBindJSON(&req); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	tx := db.Begin()
+// 	if tx.Error != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": tx.Error.Error()})
+// 		return
+// 	}
+// 	defer func() {
+// 		if r := recover(); r != nil {
+// 			tx.Rollback()
+// 		}
+// 	}()
+
+// 	if err := tx.Model(&Post{}).Where("id = ?", id).Updates(Post{
+// 		Title:   req.Title,
+// 		Content: req.Content,
+// 	}).Error; err != nil {
+// 		tx.Rollback()
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	var post Post
+// 	if err := tx.Preload("Tags").First(&post, id).Error; err != nil {
+// 		tx.Rollback()
+// 		if errors.Is(err, gorm.ErrRecordNotFound) {
+// 			c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+// 		} else {
+// 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		}
+// 		return
+// 	}
+
+// 	if err := tx.Model(&post).Association("Tags").Clear(); err != nil {
+// 		tx.Rollback()
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	var tags []Tag
+// 	for _, tagName := range req.Tags {
+// 		tagName = strings.TrimSpace(tagName)
+// 		if tagName == "" {
+// 			continue
+// 		}
+// 		var tag Tag
+// 		if err := tx.Where(Tag{Name: tagName}).FirstOrCreate(&tag).Error; err != nil {
+// 			tx.Rollback()
+// 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 			return
+// 		}
+// 		tags = append(tags, tag)
+// 	}
+
+// 	if len(tags) > 0 {
+// 		if err := tx.Model(&post).Association("Tags").Append(tags); err != nil {
+// 			tx.Rollback()
+// 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 			return
+// 		}
+// 	}
+
+// 	if err := tx.Commit().Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	c.JSON(http.StatusOK, gin.H{"msg": "更新成功"})
+// }
+
+// // deletePost处理函数
+// func deletePostHandler(c *gin.Context) {
+// 	idStr := c.Param("id")
+// 	id, err := strconv.Atoi(idStr)
+// 	if err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效ID"})
+// 		return
+// 	}
+
+// 	// 开启事务
+// 	tx := db.Begin()
+// 	if tx.Error != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": tx.Error.Error()})
+// 		return
+// 	}
+// 	defer func() {
+// 		if r := recover(); r != nil {
+// 			tx.Rollback()
+// 		}
+// 	}()
+
+// 	// 先清除标签关联
+// 	var post Post
+// 	if err := tx.First(&post, id).Error; err != nil {
+// 		tx.Rollback()
+// 		if errors.Is(err, gorm.ErrRecordNotFound) {
+// 			c.JSON(http.StatusNotFound, gin.H{"error": "文章不存在"})
+// 		} else {
+// 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		}
+// 		return
+// 	}
+// 	if err := tx.Model(&post).Association("Tags").Clear(); err != nil {
+// 		tx.Rollback()
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	// 删除文章
+// 	if err := tx.Delete(&post).Error; err != nil {
+// 		tx.Rollback()
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	if err := tx.Commit().Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	c.JSON(http.StatusOK, gin.H{"msg": "删除成功"})
+// }
+
+// func aboutHandler(c *gin.Context) {
+// 	content, err := os.ReadFile("./web/static/about.txt")
+// 	if err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法读取文件"})
+// 		return
+// 	}
+// 	c.JSON(http.StatusOK, gin.H{"content": string(content)})
+// }

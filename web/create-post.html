@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>发布/编辑文章 - MyBlog</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar" id="navbar"></nav>
+
+    <!-- 主要内容 -->
+    <div class="container">
+        <div class="card" style="max-width: 800px; margin: 0 auto;">
+            <h2 id="page-title">发布新文章</h2>
+            <form id="post-form">
+                <input type="hidden" id="edit-id" value=""> <!-- 存储编辑的文章ID -->
+                
+                <div class="form-group">
+                    <label for="title">文章标题</label>
+                    <input type="text" id="title" name="title" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="tags">标签（多个标签用逗号分隔）</label>
+                    <input type="text" id="tags" name="tags" class="form-control" placeholder="标签使用英文逗号分隔">
+                </div>
+                
+                <div class="form-group">
+                    <label for="content">文章内容</label>
+                    <textarea id="content" name="content" class="form-control" rows="10" required></textarea>
+                </div>
+                
+                <button type="submit" id="submit-btn" class="btn btn-primary">发布文章</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 脚本 -->
+    <script src="static/js/main.js"></script>
+    <script>
+        // 页面加载时判断是否为编辑模式
+        document.addEventListener('DOMContentLoaded', function() {
+            const editId = getUrlParam('editId');
+            if (editId) {
+                // 编辑模式：加载原文章内容
+                loadPostForEdit(editId);
+            } else {
+                // 发布模式：初始化表单
+                initCreateMode();
+            }
+        });
+
+        // 初始化发布模式
+        function initCreateMode() {
+            document.getElementById('page-title').textContent = '发布新文章';
+            document.getElementById('submit-btn').textContent = '发布文章';
+            // 绑定发布表单提交事件
+            document.getElementById('post-form').addEventListener('submit', handleCreateSubmit);
+        }
+
+        // 加载要编辑的文章内容
+        async function loadPostForEdit(postId) {
+            try {
+                // 调用获取单篇文章的API
+                const post = await httpGet(`/post/${postId}`);
+                
+                // 填充表单
+                document.getElementById('edit-id').value = post.id;
+                document.getElementById('title').value = post.title;
+                document.getElementById('content').value = post.content;
+                // 拼接标签（数组转逗号分隔的字符串）
+                const tagNames = post.tags.map(tag => tag.name).join(', ');
+                document.getElementById('tags').value = tagNames;
+                
+                // 修改页面标题和按钮文本
+                document.getElementById('page-title').textContent = '编辑文章';
+                document.getElementById('submit-btn').textContent = '更新文章';
+                
+                // 绑定更新表单提交事件
+                document.getElementById('post-form').addEventListener('submit', handleUpdateSubmit);
+            } catch (error) {
+                showError('加载文章失败：' + error.message);
+                // 加载失败则跳回首页
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
+            }
+        }
+
+        // 处理发布文章提交
+        async function handleCreateSubmit(e) {
+            e.preventDefault();
+            
+            // 获取表单数据
+            const title = document.getElementById('title').value.trim();
+            const content = document.getElementById('content').value.trim();
+            const tagsInput = document.getElementById('tags').value.trim();
+            
+            // 处理标签（分割并去空）
+            const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+            
+            try {
+                // 调用发布文章API
+                await httpPost('/post', {
+                    title: title,
+                    content: content,
+                    tags: tags
+                });
+                
+                alert('文章发布成功！');
+                window.location.href = 'index.html';
+            } catch (error) {
+                showError('发布失败：' + error.message);
+            }
+        }
+
+        // 处理更新文章提交
+        async function handleUpdateSubmit(e) {
+            e.preventDefault();
+            
+            // 获取编辑ID和表单数据
+            const editId = document.getElementById('edit-id').value;
+            const title = document.getElementById('title').value.trim();
+            const content = document.getElementById('content').value.trim();
+            const tagsInput = document.getElementById('tags').value.trim();
+            
+            // 处理标签（分割并去空）
+            const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+            
+            try {
+                // 调用更新文章API
+                await httpPut(`/post/${editId}`, {
+                    title: title,
+                    content: content,
+                    tags: tags
+                });
+                
+                alert('文章更新成功！');
+                window.location.href = `search-post.html?postId=${editId}`; // 跳回文章详情页
+            } catch (error) {
+                showError('更新失败：' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

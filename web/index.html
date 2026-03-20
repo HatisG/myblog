@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyBlog - 首页</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar" id="navbar"></nav>
+
+    <!-- 主要内容 -->
+    <div class="container">
+        <h2>最新文章</h2>
+        <div class="home-posts" id="latest-posts">
+            <!-- 动态加载文章列表 -->
+        </div>
+    </div>
+
+    <!-- 脚本 -->
+    <script src="static/js/main.js"></script>
+    <script>
+        // 加载最新3篇文章
+        async function loadLatestPosts() {
+            try {
+                const response = await httpGet('/post', {
+                    page: 1,
+                    page_size: 3
+                });
+                
+                const posts = response.data;
+                const postsContainer = document.getElementById('latest-posts');
+                
+                if (posts.length === 0) {
+                    postsContainer.innerHTML = '<div class="card"><p>暂无文章</p></div>';
+                    return;
+                }
+                
+                let html = '';
+                posts.forEach(post => {
+                    // 截取文章摘要（前150个字符）
+                    const excerpt = post.content.length > 150 ? post.content.substring(0, 150) + '...' : post.content;
+                    
+                    // 拼接标签HTML
+                    let tagsHtml = '';
+                    post.tags.forEach(tag => {
+                        tagsHtml += `<span class="tag">${tag.name}</span>`;
+                    });
+                    
+                    html += `
+                        <div class="card post-card">
+                            <h3>${post.title}</h3>
+                            <div class="date">${formatDate(post.created_at)}</div>
+                            <div class="tags">${tagsHtml}</div>
+                            <div class="excerpt">${excerpt}</div>
+                            <a href="search-post.html?postId=${post.id}" class="btn btn-primary">阅读全文</a>
+                        </div>
+                    `;
+                });
+                
+                postsContainer.innerHTML = html;
+            } catch (error) {
+                showError('加载文章失败：' + error.message);
+            }
+        }
+
+        // 页面加载时执行
+        document.addEventListener('DOMContentLoaded', function() {
+            loadLatestPosts();
+        });
+    </script>
+</body>
+</html>
